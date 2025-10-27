@@ -1,0 +1,26 @@
+name: Move linked issue to In Progress on branch creation
+on:
+  create:
+    branches:
+      - '**'
+
+jobs:
+  move-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract issue number from branch name
+        id: extract
+        run: |
+          BRANCH="${GITHUB_REF##*/}"
+          ISSUE=$(echo "$BRANCH" | grep -oE '[0-9]+')
+          echo "issue_number=$ISSUE" >> $GITHUB_OUTPUT
+
+      - name: Move issue to 'In Progress' in Project v2
+        if: steps.extract.outputs.issue_number != ''
+        uses: titoportas/update-project-v2-item-status@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          owner: your-org-or-username
+          project-number: 1                # Projects URL 끝 숫자
+          status: 'In Progress'
+          item-id: ${{ steps.extract.outputs.issue_number }}
