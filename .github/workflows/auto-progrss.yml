@@ -22,8 +22,7 @@ jobs:
           github-token: ${{ secrets.TOKEN_MYKEY }}
           script: |
             const issueNumber = '${{ steps.extract.outputs.issue_number }}';
-            // 프로젝트 번호를 하드코딩하려면 아래처럼 변경하세요: const projectNumber = 1;
-            const projectNumber = parseInt('${{ steps.extract.outputs.issue_number }}'); // 브랜치 이름에서 자동으로 추출
+            const projectNumber = 1; // 프로젝트 번호 (하드코딩)
             const statusName = 'In Progress'; // 상태 이름
             
             // 1. Check if repository owner is a user or organization
@@ -130,6 +129,34 @@ jobs:
             const statusField = fieldsResponse.node.fields.nodes.find(f => f.name === 'Status');
             const statusValue = statusField.options.find(o => o.name === statusName);
             
+            // 3-1. Add issue to project if not already added
+            const addItemMutation = `
+              mutation($projectId: ID!, $contentId: ID!) {
+                addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+                  item {
+                    id
+                  }
+                }
+              }
+            `;
+            
+            let projectItemId;
+            try {
+              const addItemResponse = await github.graphql(addItemMutation, {
+                projectId: projectId,
+                contentId: issueId
+              });
+              projectItemId = addItemResponse.addProjectV2ItemById.item.id;
+              console.log(`Issue #${issueNumber} added to Project ${projectNumber}`);
+            } catch (error) {
+              // Item might already be in project
+              if (error.message && error.message.includes('already exists')) {
+                console.log(`Issue #${issueNumber} already in Project ${projectNumber}`);
+              }
+              // Use the issue ID as fallback
+              projectItemId = issueId;
+            }
+            
             // 4. Update issue status
             const updateMutation = `
               mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $valueId: String!) {
@@ -148,7 +175,7 @@ jobs:
             
             await github.graphql(updateMutation, {
               projectId: projectId,
-              itemId: issueId,
+              itemId: projectItemId,
               fieldId: statusField.id,
               valueId: statusValue.id
             });
