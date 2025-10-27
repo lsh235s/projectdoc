@@ -27,9 +27,35 @@ jobs:
             const statusName = 'In Progress'; // 상태 이름
             
             // 1. Get project ID from project number
-            const projectQuery = `
+            // Check if repository owner is a user or organization
+            const checkQuery = `
+              query($login: String!) {
+                organization(login: $login) {
+                  id
+                }
+                user(login: $login) {
+                  id
+                }
+              }
+            `;
+            
+            const checkResult = await github.graphql(checkQuery, { 
+              login: context.repo.owner 
+            });
+            
+            const isOrganization = checkResult.organization !== null;
+            
+            const projectQuery = isOrganization ? `
               query($number: Int!) {
                 organization(login: "${{ github.repository_owner }}") {
+                  projectV2(number: $number) {
+                    id
+                  }
+                }
+              }
+            ` : `
+              query($number: Int!) {
+                user(login: "${{ github.repository_owner }}") {
                   projectV2(number: $number) {
                     id
                   }
@@ -38,7 +64,9 @@ jobs:
             `;
             
             const projectResponse = await github.graphql(projectQuery, { number: projectNumber });
-            const projectId = projectResponse.organization.projectV2.id;
+            const projectId = isOrganization 
+              ? projectResponse.organization.projectV2.id 
+              : projectResponse.user.projectV2.id;
             
             // 2. Get issue node ID
             const issueQuery = `
