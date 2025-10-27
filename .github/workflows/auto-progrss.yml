@@ -26,24 +26,25 @@ jobs:
             const projectNumber = parseInt('${{ steps.extract.outputs.issue_number }}'); // 브랜치 이름에서 자동으로 추출
             const statusName = 'In Progress'; // 상태 이름
             
-            // 1. Get project ID from project number
-            // Check if repository owner is a user or organization
-            const checkQuery = `
-              query($login: String!) {
-                organization(login: $login) {
-                  id
+            // 1. Check if repository owner is a user or organization
+            // Try organization first, then user if it fails
+            let isOrganization = false;
+            try {
+              const orgCheckQuery = `
+                query($login: String!) {
+                  organization(login: $login) {
+                    id
+                  }
                 }
-                user(login: $login) {
-                  id
-                }
-              }
-            `;
-            
-            const checkResult = await github.graphql(checkQuery, { 
-              login: context.repo.owner 
-            });
-            
-            const isOrganization = checkResult.organization !== null;
+              `;
+              const orgResult = await github.graphql(orgCheckQuery, { 
+                login: context.repo.owner 
+              });
+              isOrganization = orgResult.organization !== null;
+            } catch (error) {
+              // Not an organization, will use user query
+              isOrganization = false;
+            }
             
             // Use dynamic query construction based on whether it's an org or user
             let projectResponse;
