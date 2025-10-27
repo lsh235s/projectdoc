@@ -45,28 +45,41 @@ jobs:
             
             const isOrganization = checkResult.organization !== null;
             
-            const projectQuery = isOrganization ? `
-              query($number: Int!) {
-                organization(login: "${{ github.repository_owner }}") {
-                  projectV2(number: $number) {
-                    id
-                  }
-                }
-              }
-            ` : `
-              query($number: Int!) {
-                user(login: "${{ github.repository_owner }}") {
-                  projectV2(number: $number) {
-                    id
-                  }
-                }
-              }
-            `;
+            // Use dynamic query construction based on whether it's an org or user
+            let projectResponse;
+            let projectId;
             
-            const projectResponse = await github.graphql(projectQuery, { number: projectNumber });
-            const projectId = isOrganization 
-              ? projectResponse.organization.projectV2.id 
-              : projectResponse.user.projectV2.id;
+            if (isOrganization) {
+              const orgQuery = `
+                query($login: String!, $number: Int!) {
+                  organization(login: $login) {
+                    projectV2(number: $number) {
+                      id
+                    }
+                  }
+                }
+              `;
+              projectResponse = await github.graphql(orgQuery, { 
+                login: context.repo.owner,
+                number: projectNumber 
+              });
+              projectId = projectResponse.organization.projectV2.id;
+            } else {
+              const userQuery = `
+                query($login: String!, $number: Int!) {
+                  user(login: $login) {
+                    projectV2(number: $number) {
+                      id
+                    }
+                  }
+                }
+              `;
+              projectResponse = await github.graphql(userQuery, { 
+                login: context.repo.owner,
+                number: projectNumber 
+              });
+              projectId = projectResponse.user.projectV2.id;
+            }
             
             // 2. Get issue node ID
             const issueQuery = `
