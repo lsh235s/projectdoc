@@ -19,7 +19,7 @@ jobs:
         if: steps.extract.outputs.issue_number != ''
         uses: titoportas/update-project-v2-item-status@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.TOKEN_MYKEY }}
           owner: your-org-or-username
           project-number: 1                # Projects URL 끝 숫자
           status: 'In Progress'
