@@ -17,10 +17,98 @@ jobs:
 
       - name: Move issue to 'In Progress' in Project v2
         if: steps.extract.outputs.issue_number != ''
-        uses: titoportas/update-project-v2-item-status@v1
+        uses: actions/github-script@v7
         with:
-          token: ${{ secrets.TOKEN_MYKEY }}
-          owner: your-org-or-username
-          project-number: 1                # Projects URL 끝 숫자
-          status: 'In Progress'
-          item-id: ${{ steps.extract.outputs.issue_number }}
+          github-token: ${{ secrets.TOKEN_MYKEY }}
+          script: |
+            const issueNumber = '${{ steps.extract.outputs.issue_number }}';
+            // 프로젝트 번호를 하드코딩하려면 아래처럼 변경하세요: const projectNumber = 1;
+            const projectNumber = parseInt('${{ steps.extract.outputs.issue_number }}'); // 브랜치 이름에서 자동으로 추출
+            const statusName = 'In Progress'; // 상태 이름
+            
+            // 1. Get project ID from project number
+            const projectQuery = `
+              query($number: Int!) {
+                organization(login: "${{ github.repository_owner }}") {
+                  projectV2(number: $number) {
+                    id
+                  }
+                }
+              }
+            `;
+            
+            const projectResponse = await github.graphql(projectQuery, { number: projectNumber });
+            const projectId = projectResponse.organization.projectV2.id;
+            
+            // 2. Get issue node ID
+            const issueQuery = `
+              query($owner: String!, $repo: String!, $issue: Int!) {
+                repository(owner: $owner, name: $repo) {
+                  issue(number: $issue) {
+                    id
+                  }
+                }
+              }
+            `;
+            
+            const issueResponse = await github.graphql(issueQuery, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue: parseInt(issueNumber)
+            });
+            const issueId = issueResponse.repository.issue.id;
+            
+            // 3. Get status field ID
+            const fieldsQuery = `
+              query($projectId: ID!) {
+                node(id: $projectId) {
+                  ... on ProjectV2 {
+                    fields(first: 20) {
+                      nodes {
+                        ... on ProjectV2Field {
+                          id
+                          name
+                        }
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          name
+                          options {
+                            id
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+            
+            const fieldsResponse = await github.graphql(fieldsQuery, { projectId: projectId });
+            const statusField = fieldsResponse.node.fields.nodes.find(f => f.name === 'Status');
+            const statusValue = statusField.options.find(o => o.name === statusName);
+            
+            // 4. Update issue status
+            const updateMutation = `
+              mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $valueId: String!) {
+                updateProjectV2ItemFieldValue(
+                  input: {
+                    projectId: $projectId
+                    itemId: $itemId
+                    fieldId: $fieldId
+                    value: { singleSelectOptionId: $valueId }
+                  }
+                ) {
+                  clientMutationId
+                }
+              }
+            `;
+            
+            await github.graphql(updateMutation, {
+              projectId: projectId,
+              itemId: issueId,
+              fieldId: statusField.id,
+              valueId: statusValue.id
+            });
+            
+            console.log(`Issue #${issueNumber} moved to ${statusName} in Project ${projectNumber}`);
